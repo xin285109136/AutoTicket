@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+python-dotenv
+amadeus
+google-search-results
+requests
+httpx
+google-generativeai
+openai
+playwright
+

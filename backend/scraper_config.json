@@ -1,0 +1,10 @@
+{
+    "selectors": {
+        "container": "a#add_cart",
+        "flight_number": "li:nth-child(1) p:nth-child(2)",
+        "departure_time": "li:nth-child(2) p:first-child",
+        "arrival_time": "li:nth-child(4) p:first-child",
+        "price": "li:nth-child(7) p"
+    },
+    "last_updated": "2026-02-03T10:30:00"
+}

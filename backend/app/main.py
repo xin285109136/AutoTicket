@@ -32,16 +32,19 @@ class SearchRequest(BaseModel):
     date: str
     adults: int = 1
     searchMode: str = "scraper"  # 'scraper' or 'api'
+    trip_type: str = "oneway"  # 'oneway' or 'roundtrip'
+    time_range: str | None = None # 'morning', 'afternoon', 'evening'
+    flexible_ticket: bool = False # True = Changeable
 
 def generate_cache_key(req: SearchRequest) -> str:
-    return hashlib.md5(f"{req.origin}-{req.destination}-{req.date}-{req.adults}".encode()).hexdigest()
+    return hashlib.md5(f"{req.origin}-{req.destination}-{req.date}-{req.adults}-{req.time_range}-{req.flexible_ticket}".encode()).hexdigest()
 
 @app.post("/search")
 async def search_flights(request: SearchRequest):
     import time
     start_time = time.time()
     
-    logger.info(f"Search request: {request.origin}->{request.destination}, mode={request.searchMode}")
+    logger.info(f"Search request: {request.origin}->{request.destination}, mode={request.searchMode}, time={request.time_range}, flex={request.flexible_ticket}")
     
     # Generate cache key (used for both lookup and storage)
     cache_key = generate_cache_key(request)
@@ -64,7 +67,10 @@ async def search_flights(request: SearchRequest):
         dest=request.destination,
         date=request.date,
         adults=request.adults,
-        search_mode=request.searchMode
+        search_mode=request.searchMode,
+        trip_type=request.trip_type,
+        time_range=request.time_range,
+        flexible_ticket=request.flexible_ticket
     )
     
     logger.info(f"search_offers returned {len(raw_offers_result)} raw offers")

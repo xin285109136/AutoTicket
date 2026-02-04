@@ -1,0 +1,11 @@
+{
+    "selectors": {
+        "row": "tr",
+        "flight_number": ".flight-number-class-placeholder",
+        "dep_time": ".time-dep-class-placeholder",
+        "arr_time": ".time-arr-class-placeholder",
+        "price_flex": "td:has-text('予約変更可')",
+        "price_value": "td:has-text('予約変更不可')"
+    },
+    "last_updated": "2026-02-03T12:00:00"
+}

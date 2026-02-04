@@ -104,11 +104,73 @@ def normalize_serpapi_offer(raw: dict) -> Offer:
         stops=len(segments) - 1
     )
 
+def normalize_ana_offer(raw: dict) -> Offer:
+    """
+    Normalize ANA scraper data format to Offer model.
+    ANA format:
+    {
+        "source": "ANA_Official",
+        "id": "ANA_...",
+        "carrier_main": "ANA",
+        "price": 34000,
+        "currency": "JPY",
+        "segments": [{
+            "departure_iatacode": "HND",
+            "arrival_iatacode": "ITM",
+            "departure_time": "2026-02-18T06:20:00",
+            "arrival_time": "2026-02-18T07:30:00",
+            "flight_number": "ANA985",
+            "duration": "0h 0m",
+            "aircraft": "Unknown",
+            "seats_available": 9
+        }],
+        "fare_type": "Value/Flex"
+    }
+    """
+    segments = []
+    total_duration_minutes = 0
+    
+    for seg in raw.get('segments', []):
+        # Parse times
+        dep_time = datetime.fromisoformat(seg['departure_time'])
+        arr_time = datetime.fromisoformat(seg['arrival_time'])
+        
+        # Calculate duration
+        duration_td = arr_time - dep_time
+        duration_minutes = int(duration_td.total_seconds() / 60)
+        total_duration_minutes += duration_minutes
+        
+        segments.append(Segment(
+            departure_iata=seg['departure_iatacode'],
+            arrival_iata=seg['arrival_iatacode'],
+            departure_time=dep_time,
+            arrival_time=arr_time,
+            carrier_code=raw.get('carrier_main', 'ANA'),
+            flight_number=seg['flight_number'],
+            duration_minutes=duration_minutes,
+            terminal=None,
+            aircraft=seg.get('aircraft'),
+            cabin_class="ECONOMY",  # ANA scraper doesn't extract cabin class yet
+            seats_available=seg.get('seats_available', 9)
+        ))
+    
+    return Offer(
+        id=raw['id'],
+        source=raw['source'],
+        price=raw['price'],
+        currency=raw['currency'],
+        segments=segments,
+        total_duration_minutes=total_duration_minutes,
+        carrier_main=raw.get('carrier_main', 'ANA'),
+        stops=len(segments) - 1  # 0 for direct, 1+ for connecting
+    )
+
+
 def normalize_offers(raw_offers: list[dict]) -> list[Offer]:
     normalized = []
     for raw in raw_offers:
         try:
-            source = raw.get('_source')
+            source = raw.get('source') or raw.get('_source')  # Handle both 'source' and '_source'
             if source == 'amadeus':
                 normalized.append(normalize_amadeus_offer(raw))
             elif source == 'serpapi':
@@ -117,8 +179,13 @@ def normalize_offers(raw_offers: list[dict]) -> list[Offer]:
                 # ENA scraper data is already in Amadeus-compatible format
                 # Just normalize it like Amadeus data
                 normalized.append(normalize_amadeus_offer(raw))
+            elif source == 'ANA_Official':
+                # ANA scraper has its own data format
+                normalized.append(normalize_ana_offer(raw))
+            else:
+                print(f"Unknown source: {source}, skipping offer")
         except Exception as e:
             # Skip malformed offers but log in real prod
-            print(f"Error normalizing offer from {raw.get('_source')}: {e}")
+            print(f"Error normalizing offer from {raw.get('source') or raw.get('_source')}: {e}")
             continue
     return normalized

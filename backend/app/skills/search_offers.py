@@ -83,32 +83,41 @@ def resolve_code(input_str: str) -> str:
     # Fallback: Assume it is a code
     return clean_str
 
-def search_offers(origin: str, dest: str, date: str, adults: int = 1, search_mode: str = "scraper"):
+def search_offers(origin: str, dest: str, date: str, adults: int = 1, search_mode: str = "api", trip_type: str = "oneway", time_range: str = None, flexible_ticket: bool = False) -> tuple[list[dict], str | None]:
     """
-    Search for flight offers using Amadeus API, falling back to SerpApi (Google Flights).
-    Returns a list of raw offer dictionaries with a '_source' key.
+    Orchestrate the search process.
     """
-    # Resolve Codes
+    logger.info(f"Searching offers: {origin}->{dest} on {date} (Mode: {search_mode})")
+    
+    
+    # Resolve cities to airport codes using comprehensive mapping
     origin_code = resolve_code(origin)
     dest_code = resolve_code(dest)
 
-    results = []
-    warning = None
     
-    # Mode: Scraper - ONLY use web scraper
+    # 1. Scraper Mode (ANA Official)
     if search_mode == "scraper":
-        logger.info(f"[SCRAPER MODE] Using ENA Travel web scraper: {origin}({origin_code})->{dest}({dest_code}) on {date}")
+        logger.info(f"[SCRAPER MODE] Using ANA Official scraper: {origin}({origin_code})->{dest}({dest_code}) on {date}, trip_type={trip_type}")
+        results = []
+        warning = None
         try:
-            from app.skills.scrape_ena import scrape_ena_flights
-            # Use config defaults for headless and auto_close (from .env)
-            ena_results, ena_warning = scrape_ena_flights(origin_code, dest_code, date, adults)
-            results.extend(ena_results)
-            warning = ena_warning
-            logger.info(f"[SCRAPER MODE] ENA scraper found {len(ena_results)} offers")
+            from app.skills.scrape_ana import scrape_ana_flights
+            # Pass new filters to scraper
+            ana_results, ana_warning = scrape_ana_flights(
+                origin_code, dest_code, date, adults, 
+                trip_type=trip_type,
+                time_range=time_range, 
+                flexible_ticket=flexible_ticket
+            )
+            results.extend(ana_results)
+            warning = ana_warning
+            logger.info(f"[SCRAPER MODE] ANA scraper found {len(ana_results)} offers")
         except Exception as e:
-            logger.error(f"[SCRAPER MODE] ENA scraper failed: {e}")
+            logger.error(f"[SCRAPER MODE] ANA scraper failed: {e}")
+            warning = f"ANA Scraper Failed: {e}"
         
-        return results, warning  # Return scraper results and warning
+        return results, warning
+  # Return scraper results and warning
     
     # Mode: API - ONLY use Amadeus and SerpApi
     logger.info(f"[API MODE] Using API search: {origin}({origin_code})->{dest}({dest_code}) on {date}")

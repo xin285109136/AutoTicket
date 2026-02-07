@@ -20,13 +20,13 @@ except Exception as e:
 # Common City Code Mapping (Simple Fallback)
 CITY_MAP = {
     # Japan
-    "東京": "TYO", "TOKYO": "TYO", "羽田": "HND", "HANEDA": "HND", "成田": "NRT", "NARITA": "NRT",
-    "大阪": "OSA", "OSAKA": "OSA", "関西": "KIX", "ITAMI": "ITM", "伊丹": "ITM",
-    "札幌": "SPK", "SAPPORO": "SPK", "千歳": "CTS",
-    "福岡": "FUK", "FUKUOKA": "FUK",
-    "広島": "HIJ", "HIROSHIMA": "HIJ", 
-    "沖縄": "OKA", "OKINAWA": "OKA", "那覇": "OKA",
-    "名古屋": "NGO", "NAGOYA": "NGO",
+    "東京": "TYO", "TOKYO": "TYO", "TYO": "TYO", "羽田": "HND", "HANEDA": "HND", "HND": "HND", "成田": "NRT", "NARITA": "NRT", "NRT": "NRT",
+    "大阪": "OSA", "OSAKA": "OSA", "OSA": "OSA", "関西": "KIX", "KIX": "KIX", "ITAMI": "ITM", "伊丹": "ITM", "ITM": "ITM",
+    "札幌": "SPK", "SAPPORO": "SPK", "SPK": "SPK", "千歳": "CTS", "CTS": "CTS",
+    "福岡": "FUK", "FUKUOKA": "FUK", "FUK": "FUK",
+    "広島": "HIJ", "HIROSHIMA": "HIJ", "HIJ": "HIJ",
+    "沖縄": "OKA", "OKINAWA": "OKA", "OKA": "OKA", "那覇": "OKA",
+    "名古屋": "NGO", "NAGOYA": "NGO", "NGO": "NGO",
     # International (Common)
     "LOS ANGELES": "LAX", "LAX": "LAX", "洛杉矶": "LAX", "ロサンゼルス": "LAX",
     "NEW YORK": "NYC", "NYC": "NYC", "ニューヨーク": "NYC",
@@ -119,19 +119,66 @@ def search_offers(origin: str, dest: str, date: str, adults: int = 1, search_mod
         return results, warning
   # Return scraper results and warning
     
-    # Mode: API - ONLY use Amadeus and SerpApi
+    # Mode: API - Use Google Flights (SerpApi) as primary
     logger.info(f"[API MODE] Using API search: {origin}({origin_code})->{dest}({dest_code}) on {date}")
+    results = [] # Initialize results list
+
     
-    # 1. Try Amadeus
-    if amadeus:
+    # 1. Try SerpApi (Google Flights) - PRIMARY
+    if settings.SERPAPI_KEY:
         try:
-            logger.info(f"[API MODE] Searching Amadeus API...")
+            logger.info(f"[API MODE] Searching SerpApi (Google Flights)...")
+            params = {
+                "engine": "google_flights",
+                "departure_id": origin_code,
+                "arrival_id": dest_code,
+                "outbound_date": date,
+                "adults": adults,
+                "currency": "JPY", # Enforce JPY
+                "hl": "ja",        # Japanese locale
+                "api_key": settings.SERPAPI_KEY,
+                "type": "2" if trip_type == "oneway" else "1" # 2=OneWay, 1=RoundTrip
+            }
+            
+            if trip_type == "roundtrip":
+                 # Add return date if needed, but current signature doesn't support it fully yet
+                 # For now defaulting to one-way logic or simple parameter pass key
+                 pass
+            
+            search = GoogleSearch(params)
+            serpapi_data = search.get_dict()
+            
+            # Extract 'best_flights' or 'flights'
+            # Google Flights API structure usually has 'best_flights' and 'other_flights'
+            flight_lists = []
+            if "best_flights" in serpapi_data:
+                flight_lists.extend(serpapi_data["best_flights"])
+            if "other_flights" in serpapi_data:
+                flight_lists.extend(serpapi_data["other_flights"])
+                
+            if not flight_lists:
+                logger.warning(f"[API MODE] SerpApi returned 0 flights.")
+            
+            for flight in flight_lists:
+                flight['_source'] = 'serpapi'
+                results.append(flight)
+                
+            logger.info(f"[API MODE] SerpApi found {len(results)} offers")
+            
+        except Exception as e:
+            logger.error(f"[API MODE] SerpApi Error: {e}")
+            
+    # 2. Amadeus (Legacy/Backup - Disabled for now as per request)
+    """
+    if not results and amadeus:
+        try:
+            logger.info(f"[API MODE] Searching Amadeus API (Backup)...")
             response = amadeus.shopping.flight_offers_search.get(
                 originLocationCode=origin_code,
                 destinationLocationCode=dest_code,
                 departureDate=date,
                 adults=adults,
-                currencyCode="EUR",
+                currencyCode="JPY",
                 max=50
             )
             if response.data:
@@ -144,32 +191,7 @@ def search_offers(origin: str, dest: str, date: str, adults: int = 1, search_mod
             logger.error(f"[API MODE] Amadeus API Error: {e.code}")
         except Exception as e:
             logger.error(f"[API MODE] Amadeus Unexpected Error: {e}")
-
-    # 2. If no results from Amadeus, try SerpApi (Google Flights)
-    if not results and settings.SERPAPI_KEY:
-        try:
-            logger.info(f"[API MODE] Searching SerpApi (Google Flights)...")
-            params = {
-                "engine": "google_flights",
-                "departure_id": origin_code,
-                "arrival_id": dest_code,
-                "outbound_date": date,
-                "adults": adults,
-                "currency": "USD",
-                "hl": "en",
-                "api_key": settings.SERPAPI_KEY,
-                "type": "2"  # One-Way
-            }
-            search = GoogleSearch(params)
-            serpapi_data = search.get_dict()
-            
-            if "best_flights" in serpapi_data:
-                for flight in serpapi_data["best_flights"]:
-                    flight['_source'] = 'serpapi'
-                results.extend(serpapi_data["best_flights"])
-                logger.info(f"[API MODE] SerpApi found {len(serpapi_data['best_flights'])} offers")
-        except Exception as e:
-            logger.error(f"[API MODE] SerpApi Error: {e}")
+    """
     
     logger.info(f"[API MODE] Total API results: {len(results)}")
     return results, None
